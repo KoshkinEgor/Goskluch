@@ -13,20 +13,20 @@ export const MainPage = () => {
             </a>
           </nav>
           <h2 className="mb-4">Реестр запросов</h2>
-          <div class="input-group mb-3">
+          <div className="input-group mb-3">
             <input
               type="text"
-              class="form-control"
+              className="form-control"
               placeholder="СНИЛС или OID"
               aria-label="СНИЛС или OID"
             />
-            <div class="input-group-append">
-              <button class="btn btn-outline-primary" type="button">
+            <div className="input-group-append">
+              <button className="btn btn-outline-primary" type="button">
                 Найти
               </button>
             </div>
           </div>
-          <table class="table">
+          <table className="table">
             <thead>
               <tr>
                 <th scope="col">#</th>
@@ -66,30 +66,30 @@ export const MainPage = () => {
               </tr>
             </tbody>
           </table>
-          <nav aria-label="Пример навигации по страницам">
-            <ul class="pagination">
-              <li class="page-item">
-                <a class="page-link" href="#" aria-label="Предыдущая">
+          <nav>
+            <ul className="pagination">
+              <li className="page-item">
+                <a className="page-link" href="#" aria-label="Предыдущая">
                   <span aria-hidden="true">&laquo;</span>
                 </a>
               </li>
-              <li class="page-item">
-                <a class="page-link" href="#">
+              <li className="page-item active">
+                <a className="page-link" href="#">
                   1
                 </a>
               </li>
-              <li class="page-item">
-                <a class="page-link" href="#">
+              <li className="page-item">
+                <a className="page-link" href="#">
                   2
                 </a>
               </li>
-              <li class="page-item">
-                <a class="page-link" href="#">
+              <li className="page-item">
+                <a className="page-link" href="#">
                   3
                 </a>
               </li>
-              <li class="page-item">
-                <a class="page-link" href="#" aria-label="Следующая">
+              <li className="page-item">
+                <a className="page-link" href="#" aria-label="Следующая">
                   <span aria-hidden="true">&raquo;</span>
                 </a>
               </li>

@@ -5,7 +5,6 @@ export const CreateOrderPage = () => {
   const [files, setFiles] = useState([]);
   const MAX_FILES = 15;
 
-  // Функция форматирования размера
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Б';
     const k = 1024;
@@ -20,7 +19,7 @@ export const CreateOrderPage = () => {
       const newFiles = [...prevFiles, ...selectedFiles];
       return newFiles.slice(0, MAX_FILES);
     });
-    e.target.value = ''; // Сброс значения input для возможности повторного выбора тех же файлов
+    e.target.value = ''; 
   };
 
   const handleRemoveFile = (indexToRemove) => {
@@ -39,10 +38,8 @@ export const CreateOrderPage = () => {
           </nav>
           <h2 className="mb-4">Детали запроса</h2>
           
-          {/* Важно: добавлен encType для корректной отправки файлов */}
           <form action="" encType="multipart/form-data">
             
-            {/* ... Блок "Данные запроса" остался без изменений ... */}
             <div className="card mb-4">
               <div className="card-header">Данные запроса</div>
               <div className="card-body">
@@ -78,14 +75,11 @@ export const CreateOrderPage = () => {
               </div>
             </div>
 
-            {/* --- Переработанный блок "Пакет документов" --- */}
             <div className="card mb-4">
               <div className="card-header">Пакет документов</div>
               <div className="card-body">
                 
-                {/* Кастомная кнопка загрузки */}
                 <div className="position-relative d-inline-block mb-3">
-                  {/* Визуальная кнопка */}
                   <button 
                     type="button" 
                     className="btn btn-outline-secondary" 
@@ -94,7 +88,6 @@ export const CreateOrderPage = () => {
                     Выбрать файлы
                   </button>
                   
-                  {/* Скрытый input, перекрывающий кнопку */}
                   <input
                     type="file"
                     multiple
@@ -118,7 +111,6 @@ export const CreateOrderPage = () => {
                   </div>
                 )}
 
-                {/* Таблица загруженных файлов */}
                 {files.length > 0 && (
                   <table className="table table-sm mt-2">
                     <tbody>
@@ -142,7 +134,6 @@ export const CreateOrderPage = () => {
                   </table>
                 )}
                 
-                {/* Статистика */}
                 <div className="d-flex justify-content-end flex-column text-muted small mt-2">
                   <span>{formatFileSize(totalSize)}</span>
                   <span>{files.length}/{MAX_FILES}</span>
