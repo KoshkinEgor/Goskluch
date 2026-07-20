@@ -1,6 +1,35 @@
+import { useState, useEffect } from "react";
+import { useParams } from "react-router";
+
 import { Header } from "../components/Header";
+import { fetchOrder } from "../repository/repository";
 
 export const OrderDetailsPage = () => {
+  const { id } = useParams();
+  const [order, setOrder] = useState(null);
+
+  useEffect(() => {
+    const getOrder = async (id) => {
+      const fetchedOrder = await fetchOrder(id);
+      setOrder(fetchedOrder);
+    };
+
+    getOrder(id);
+  }, [id]);
+
+  if (!order) {
+    return (
+      <>
+        <Header />
+        <main>
+          <div className="container">
+            <p>Загрузка...</p>
+          </div>
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <Header />
@@ -8,54 +37,67 @@ export const OrderDetailsPage = () => {
         <div className="container">
           <nav className="navbar text-right mb-4">
             <a href="/orders" className="nav-item">
-              ‹ Главная
+              ‹ Реестр запросов
             </a>
           </nav>
           <h2 className="mb-4">Детали запроса</h2>
 
-          <div class="card mb-4">
-            <div class="card-header">Данные запроса</div>
-            <div class="card-body">
-              <p class="card-text">
-                <b>Создан:</b> 11.02.2026
+          <div className="card mb-4">
+            <div className="card-header">Данные запроса</div>
+            <div className="card-body">
+              <p className="card-text">
+                <b>Создан:</b>{" "}
+                {new Date(order.createdDate).toLocaleDateString("ru-RU")}
               </p>
-              <p class="card-text">
-                <b>СНИЛС:</b> 123-123-123 00
+              <p className="card-text">
+                {order.receiverIdType === "snils" ? (
+                  <>
+                    <b>СНИЛС: </b>
+                    {order.receiverId}
+                  </>
+                ) : (
+                  <>
+                    <b>OID: </b>
+                    {order.receiverId}
+                  </>
+                )}
               </p>
-              <p class="card-text">
-                <b>Описание:</b> Запрос на подписание документов
+
+              <p className="card-text">
+                <b>Отправитель:</b> {order.userName}
+              </p>
+              <p className="card-text">
+                <b>Описание:</b> {order.description}
               </p>
             </div>
           </div>
-          {/* <OrderMessageCardSucceed /> */}
+          
+          <OrderMessageCardSucceed />
           {/* <OrderMessageCardDeclined/> */}
-          <OrderMessageCardInternalError />
-          <div class="card">
-            <div class="card-header">Состав пакета документов</div>
-            <div class="card-body">
-              <table class="table">
+          {/* <OrderMessageCardInternalError /> */}
+          
+          <div className="card mb-4">
+            <div className="card-header">Состав пакета документов</div>
+            <div className="card-body">
+              <table className="table">
                 <tbody>
-                  <tr>
-                    <th scope="row">1</th>
-                    <td>Договок_оказания_услуг_№32.pdf</td>
-                    <td>
-                      <a href="">Скачать &darr;</a>
-                    </td>
-                  </tr>
-                  <tr>
-                    <th scope="row">2</th>
-                    <td>Приложеие_№1_Техническое задание.tiff</td>
-                    <td>
-                      <a href="">Скачать &darr;</a>
-                    </td>
-                  </tr>
-                  <tr>
-                    <th scope="row">3</th>
-                    <td>Скан_паспорта_заявителя.jpg</td>
-                    <td>
-                      <a href="">Скачать &darr;</a>
-                    </td>
-                  </tr>
+                  {order.documentsPack && order.documentsPack.length > 0 ? (
+                    order.documentsPack.map((d, i) => (
+                      <tr key={i}>
+                        <th scope="row">{i + 1}</th>
+                        <td>{d.name || "Документ"}</td>
+                        <td>
+                          <a href="">Скачать &darr;</a>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="3" className="text-center">
+                        Документы отсутствуют
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -68,9 +110,9 @@ export const OrderDetailsPage = () => {
 
 const OrderMessageCardSucceed = () => {
   return (
-    <div class="card mb-4">
-      <div class="card-header">Статус запроса</div>
-      <div class="card-body ">
+    <div className="card mb-4">
+      <div className="card-header">Статус запроса</div>
+      <div className="card-body">
         <div className="d-flex align-items-center justify-content-between mb-2">
           <div>
             <b>Статус:</b> Подписан
@@ -80,7 +122,7 @@ const OrderMessageCardSucceed = () => {
           </button>
         </div>
         <div>
-          <p class="card-text text-secondary">
+          <p className="card-text text-secondary">
             Документы подписаны получателем и доступны для скачивания.
           </p>
         </div>
@@ -91,9 +133,9 @@ const OrderMessageCardSucceed = () => {
 
 const OrderMessageCardDeclined = () => {
   return (
-    <div class="card mb-4">
-      <div class="card-header">Статус запроса</div>
-      <div class="card-body ">
+    <div className="card mb-4">
+      <div className="card-header">Статус запроса</div>
+      <div className="card-body">
         <div className="d-flex align-items-center justify-content-between mb-2">
           <div>
             <b>Статус:</b> Отклонен
@@ -103,7 +145,7 @@ const OrderMessageCardDeclined = () => {
           </button>
         </div>
         <div>
-          <p class="card-text text-secondary">
+          <p className="card-text text-secondary">
             Подписание документов было отклонено получателем. При необходимости
             повторите запрос.
           </p>
@@ -115,16 +157,16 @@ const OrderMessageCardDeclined = () => {
 
 const OrderMessageCardInternalError = () => {
   return (
-    <div class="card mb-4">
-      <div class="card-header">Статус запроса</div>
-      <div class="card-body ">
+    <div className="card mb-4">
+      <div className="card-header">Статус запроса</div>
+      <div className="card-body">
         <div className="d-flex align-items-center justify-content-between mb-2">
           <div>
             <b>Статус:</b> Внутренняя ошибка
           </div>
         </div>
         <div>
-          <p class="card-text text-secondary">
+          <p className="card-text text-secondary">
             Произошла внутренняя ошибка при отправке запроса. Проверьте данные
             получателя и сформируйте запрос повторно.
           </p>

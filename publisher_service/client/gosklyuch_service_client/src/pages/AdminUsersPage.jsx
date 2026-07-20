@@ -86,7 +86,7 @@ export const AdminUsersPage = () => {
             className="modal fade show d-block"
             tabIndex="-1"
             role="dialog"
-            style={{ backgroundColor: "rgba(0,0,0,0.5)" }} // Опционально: затемнение фона
+            style={{ backgroundColor: "rgba(0,0,0,0.5)" }} 
           >
             <div className="modal-dialog" role="document">
               <div className="modal-content">
@@ -124,7 +124,7 @@ export const AdminUsersPage = () => {
                       <input
                         type="password"
                         className="form-control"
-                        placeholder="Введите парль"
+                        placeholder="Введите пароль"
                       />
                     </div>
                    
@@ -132,7 +132,7 @@ export const AdminUsersPage = () => {
                 </div>
                 <div className="modal-footer">
                   <button type="button" className="btn btn-primary">
-                    Сохранить изменения
+                    Добавить
                   </button>
                 </div>
               </div>
