@@ -11,6 +11,7 @@ public class User
     public string Role { get; set; } = "user";
     public string Login { get; set; } = String.Empty;
     public string Password { get; set; } = String.Empty;
+    public DateTime? DeletedAt {get;set;}
     public ICollection<Order> Orders { get; set; }
 
 

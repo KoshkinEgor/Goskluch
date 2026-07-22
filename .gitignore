@@ -1,0 +1,6 @@
+/epgu_mock/bin
+/epgu_mock/obj
+/esia_mock/bin
+/esia_mock/obj
+/publisher_service/client/gosklyuch_service_client/node_modules
+/publisher_service/server/bin

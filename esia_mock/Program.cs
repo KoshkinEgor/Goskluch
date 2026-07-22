@@ -1,7 +1,7 @@
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-app.MapGet("auth/authorize/{api_key}/tkn", (string api_key, string signature) =>
+app.MapGet("ext-app/{api_key}/tkn", (string api_key, string signature) =>
 {
 
     Console.WriteLine(api_key); // Проверка корректности api key

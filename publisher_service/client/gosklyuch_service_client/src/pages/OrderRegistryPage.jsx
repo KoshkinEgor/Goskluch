@@ -56,15 +56,9 @@ export const OrderRegistryPage = () => {
                 return (
                   <tr key={i}>
                     <th scope="col">{i + 1}</th>
-                    <td scope="col">{
-                    
-                    
-                    new Date(o.createdDate).toLocaleDateString('ru-Ru')
-                    
-                    
-                    
-                    
-                    }</td>
+                    <td scope="col">
+                      {new Date(o.createdDate).toLocaleDateString("ru-Ru")}
+                    </td>
                     <td scope="col">
                       <small className="text-secondary">
                         {o.receiverIdType == "snils" ? "СНИЛС: " : "OID: "}
