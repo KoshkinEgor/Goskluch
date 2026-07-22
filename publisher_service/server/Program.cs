@@ -123,6 +123,13 @@ app.MapPost("/auth", (Dto.UserAuth userAuth, ApplicationContext context, HttpCon
     return Results.Ok(new { token = tokenString, userRole=user.Role }); 
 });
 
+app.MapDelete("auth", (HttpContext httpContext) =>
+{
+    httpContext.Response.Cookies.Delete("UserRole");
+    httpContext.Response.Cookies.Delete("AuthToken");
+
+});
+
 // Заказы
 app.MapGet("/orders", (ApplicationContext context) =>
 {
