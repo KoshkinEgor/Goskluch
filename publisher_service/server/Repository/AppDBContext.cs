@@ -6,6 +6,8 @@ public class ApplicationContext : DbContext
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<Order> Orders => Set<Order>();
+    public DbSet<Document> Documents => Set<Document>();
+
     public DbSet<ConfigSettings> ConfigSettings => Set<ConfigSettings>();
 
     public ApplicationContext(DbContextOptions<ApplicationContext> options) : base(options)

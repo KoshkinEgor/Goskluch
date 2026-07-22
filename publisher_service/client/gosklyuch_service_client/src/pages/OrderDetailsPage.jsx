@@ -3,6 +3,7 @@ import { useParams } from "react-router";
 
 import { Header } from "../components/Header";
 import { fetchOrder } from "../repository/repository";
+import { DocumentLoadLink } from "../DocumentLoader";
 
 export const OrderDetailsPage = () => {
   const { id } = useParams();
@@ -85,9 +86,9 @@ export const OrderDetailsPage = () => {
                     order.documentsPack.map((d, i) => (
                       <tr key={i}>
                         <th scope="row">{i + 1}</th>
-                        <td>{d.name || "Документ"}</td>
+                        <td>{d.name}</td>
                         <td>
-                          <a href="">Скачать &darr;</a>
+                          <DocumentLoadLink res={d.localName}/>
                         </td>
                       </tr>
                     ))

@@ -55,7 +55,7 @@ builder.Services.AddCors(options =>
               .AllowAnyHeader()
               .AllowCredentials()
               .AllowAnyMethod();
-    }); 
+    });
 });
 
 var app = builder.Build();
@@ -70,9 +70,9 @@ app.UseAuthorization();
 // Авторизация (доступен без авторизации)
 app.MapPost("/auth", (Dto.UserAuth userAuth, ApplicationContext context, HttpContext httpContext) =>
 {
-    var user = context.Users.FirstOrDefault(u => 
-        u.Login == userAuth.Login && 
-        u.Password == userAuth.Password && 
+    var user = context.Users.FirstOrDefault(u =>
+        u.Login == userAuth.Login &&
+        u.Password == userAuth.Password &&
         u.DeletedAt == null);
 
     if (user is null)
@@ -89,9 +89,9 @@ app.MapPost("/auth", (Dto.UserAuth userAuth, ApplicationContext context, HttpCon
 
     var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
     var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-    
+
     var token = new JwtSecurityToken(
-        issuer: jwtIssuer,  
+        issuer: jwtIssuer,
         audience: jwtAudience,
         claims: claims,
         expires: DateTime.UtcNow.AddDays(1),
@@ -102,7 +102,7 @@ app.MapPost("/auth", (Dto.UserAuth userAuth, ApplicationContext context, HttpCon
     var tokenString = tokenHandler.WriteToken(token);
 
     // Установка cookie-файла с токеном
-      httpContext.Response.Cookies.Append("AuthToken", tokenString, new CookieOptions
+    httpContext.Response.Cookies.Append("AuthToken", tokenString, new CookieOptions
     {
         HttpOnly = true,
         SameSite = SameSiteMode.Lax, // Разрешает отправку между разными портами
@@ -120,7 +120,7 @@ app.MapPost("/auth", (Dto.UserAuth userAuth, ApplicationContext context, HttpCon
 
     // Возвращаем токен также в теле ответа для обратной совместимости, 
     // если клиентское приложение ожидает его в JSON.
-    return Results.Ok(new { token = tokenString, userRole=user.Role }); 
+    return Results.Ok(new { token = tokenString, userRole = user.Role });
 });
 
 app.MapDelete("auth", (HttpContext httpContext) =>
@@ -135,20 +135,29 @@ app.MapGet("/orders", (ApplicationContext context) =>
 {
     return context.Orders
         .Include(o => o.User)
+        .Include(o => o.Documents)
         .Select(o => new Dto.OrderGet(o));
+
 }).RequireAuthorization();
 
-app.MapGet("/orders/{id:int}", (int id, ApplicationContext context) =>
+app.MapGet("/orders/{id}", (int id, ApplicationContext context) =>
 {
-    var result = context.Orders
-        .Include(o => o.User)
+    var order = context.Orders
+        .Include(o => o.User)          // Явная загрузка пользователя
+        .Include(o => o.Documents)     // Явная загрузка документов (уже используется в вашем DTO)
         .FirstOrDefault(o => o.Id == id);
 
-    return result is not null ? Results.Ok(new Dto.OrderGet(result)) : Results.NotFound();
+    if (order == null)
+    {
+        return Results.NotFound();
+    }
+
+    return Results.Ok(new Dto.OrderGet(order));
 }).RequireAuthorization();
 
 app.MapPost("/orders/", ([FromForm] Dto.OrderCreate orderData, ApplicationContext context, ClaimsPrincipal user) =>
 {
+
     var userIdStr = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
     if (!int.TryParse(userIdStr, out int userId))
     {
@@ -163,14 +172,72 @@ app.MapPost("/orders/", ([FromForm] Dto.OrderCreate orderData, ApplicationContex
         ReceiverIdType = orderData.ReceiverIdType,
         UserId = userId,
         Description = orderData.Description,
-        DocumentsPack = orderData.DocumentsPack?.Select(d => d.FileName).ToList() ?? new List<string>()
+        Documents = new List<Repo.Document>()
     };
 
     context.Orders.Add(newOrder);
+
+    // Рекомендуется выносить путь в конфигурацию (appsettings.json)
+    string storagePath = "./DocumentsStorage"; 
+    
+    // Гарантируем существование директории перед записью
+    Directory.CreateDirectory(storagePath);
+
+    foreach (var doc in orderData.DocumentsPack)
+    {
+        if (doc == null || doc.Length == 0)
+        {
+            continue;
+        }
+
+        var fileExtension = Path.GetExtension(doc.FileName);
+        var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
+        var filePath = Path.Combine(storagePath, uniqueFileName);
+
+        var newDocument = new Repo.Document
+        {
+            Name = doc.FileName,       // Оригинальное имя файла для отображения пользователю
+            LocalName = uniqueFileName, // Уникальное имя для физического хранения
+            Order = newOrder
+        };
+
+        context.Documents.Add(newDocument);
+
+        // Сохраняем файл на диск
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            doc.CopyTo(stream);
+        }
+    }
+
+    // Сохраняем все изменения в базе данных (и Order, и Document)
     context.SaveChanges();
 
     return Results.Created($"/orders/{newOrder.Id}", newOrder.Id);
 }).RequireAuthorization().DisableAntiforgery();
+
+app.MapGet("/documents/{localName}", (string localName, IWebHostEnvironment env) =>
+{
+
+    var safeFileName = Path.GetFileName(localName);
+    if (string.IsNullOrWhiteSpace(safeFileName) || safeFileName != localName)
+    {
+        return Results.BadRequest("Некорректное имя файла.");
+    }
+
+    var storagePath = Path.Combine(env.ContentRootPath, "DocumentsStorage");
+    var filePath = Path.Combine(storagePath, safeFileName);
+
+    if (!File.Exists(filePath))
+    {
+        return Results.NotFound();
+    }
+
+    var contentType = "application/octet-stream"; 
+    
+    return Results.File(filePath, contentType, safeFileName);
+
+}).RequireAuthorization();
 
 // Пользователи и настройки
 app.MapGet("/users", (ApplicationContext context) =>
@@ -184,7 +251,7 @@ app.MapDelete("/users/{id:int}", (int id, ApplicationContext context) =>
 {
     var user = context.Users.FirstOrDefault(u => u.Id == id);
     if (user is null) return Results.NotFound();
-    
+
     user.DeletedAt = DateTime.UtcNow;
     context.SaveChanges();
     return Results.Ok(new { id });
@@ -192,11 +259,12 @@ app.MapDelete("/users/{id:int}", (int id, ApplicationContext context) =>
 
 app.MapPost("/users", (Dto.UserCreate userData, ApplicationContext context) =>
 {
-    var newUser = new Repo.User { 
-        Name = userData.Name, 
-        Login = userData.Login, 
+    var newUser = new Repo.User
+    {
+        Name = userData.Name,
+        Login = userData.Login,
         Password = userData.Password,
-        Role = "user" 
+        Role = "user"
     };
     context.Users.Add(newUser);
     context.SaveChanges();
@@ -241,10 +309,10 @@ app.MapGet("/initusers", (ApplicationContext context) =>
 
     context.Users.AddRange(user1, user2, user3);
 
-    context.Orders.AddRange(
-        new Order { CreatedDate = DateTime.UtcNow, Description = "Запрос на подписание доверенности", EpguOrderId = 123456789, User = user1, ReceiverIdType = "snils", ReceiverId = "123 123 123 00" },
-        new Order { CreatedDate = DateTime.UtcNow.AddDays(-3), Description = "Запрос на подписание доверенности", EpguOrderId = 987654321, User = user2, ReceiverIdType = "oid", ReceiverId = "1000001234567" }
-    );
+    // context.Orders.AddRange(
+    //     new Order { CreatedDate = DateTime.UtcNow, Description = "Запрос на подписание доверенности", EpguOrderId = 123456789, User = user1, ReceiverIdType = "snils", ReceiverId = "123 123 123 00" },
+    //     new Order { CreatedDate = DateTime.UtcNow.AddDays(-3), Description = "Запрос на подписание доверенности", EpguOrderId = 987654321, User = user2, ReceiverIdType = "oid", ReceiverId = "1000001234567" }
+    // );
 
     context.ConfigSettings.Add(new ConfigSettings
     {

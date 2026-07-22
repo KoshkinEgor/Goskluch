@@ -1,10 +1,11 @@
 import axios from "axios";
 
+axios.defaults.baseURL = "http://localhost:5197"
 axios.defaults.withCredentials = true;
 
 export async function fetchOrders() {
   try {
-    const response = await axios.get("http://localhost:5197/orders");
+    const response = await axios.get("/orders");
     return response.data;
   } catch (error) {
     console.error("Не удалось получить данные заказов:", error.message);
@@ -14,7 +15,7 @@ export async function fetchOrders() {
 
 export async function fetchOrder(id) {
   try {
-    const response = await axios.get(`http://localhost:5197/orders/${id}`);
+    const response = await axios.get(`/orders/${id}`);
     return response.data;
   } catch (error) {
     console.error("Не удалось получить данные заказов:", error.message);
@@ -45,7 +46,7 @@ export async function fetchOrderCreate(orderData, files) {
     }
 
     const response = await axios.post(
-      "http://localhost:5197/orders/",
+      "/orders/",
       formData,
     );
 
@@ -58,7 +59,7 @@ export async function fetchOrderCreate(orderData, files) {
 
 export async function fetchConfigSettings() {
   try {
-    const response = await axios.get("http://localhost:5197/configsettings");
+    const response = await axios.get("/configsettings");
     return response.data;
   } catch (error) {
     console.error("Не удалось получить данные конфигурации:", error.message);
@@ -69,7 +70,7 @@ export async function fetchConfigSettings() {
 export async function fetchConfigSettingsPut(settings) {
   try {
     const response = await axios.put(
-      "http://localhost:5197/configsettings",
+      "/configsettings",
       settings,
     );
     return response.data;
@@ -81,7 +82,7 @@ export async function fetchConfigSettingsPut(settings) {
 
 export async function fetchUsers() {
   try {
-    const response = await axios.get("http://localhost:5197/users");
+    const response = await axios.get("/users");
     return response.data;
   } catch (error) {
     console.error("Не удалось получить данные пользователей:", error.message);
@@ -91,7 +92,7 @@ export async function fetchUsers() {
 
 export async function fetchUserDelete(Id) {
   try {
-    const response = await axios.delete(`http://localhost:5197/users/${Id}`);
+    const response = await axios.delete(`/users/${Id}`);
     return response.data;
   } catch (error) {
     console.error("Не удалось получить данные пользователей:", error.message);
@@ -101,9 +102,13 @@ export async function fetchUserDelete(Id) {
 
 export async function fetchUserCreate(userData) {
   try {
-    const response = await axios.post(`http://localhost:5197/users/`, userData, {
-      withCredentials: true
-    });
+    const response = await axios.post(
+      `/users/`,
+      userData,
+      {
+        withCredentials: true,
+      },
+    );
     console.log(response.data);
     return response.data;
   } catch (error) {
@@ -114,10 +119,20 @@ export async function fetchUserCreate(userData) {
 
 export async function fetchAuth(login, password) {
   try {
-    const response = await axios.post(`http://localhost:5197/auth/`, {
+    const response = await axios.post(`/auth/`, {
       login: login,
       password: password,
     });
+    return response.data;
+  } catch (error) {
+    console.error("Не удалось получить данные пользователя:", error.message);
+    return "";
+  }
+}
+
+export async function fetchAuthLogout() {
+  try {
+    const response = await axios.delete(`/auth/`);
     return response.data;
   } catch (error) {
     console.error("Не удалось получить данные пользователя:", error.message);

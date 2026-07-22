@@ -11,7 +11,7 @@ public class Order
     public string ReceiverId { get; set; }
     public int UserId { get; set; }
     public string Description { get; set; }
-    public ICollection<string> DocumentsPack { get; set; } = ["document1", "document2"];
-    public User User { get; set; } = new User();
+    public ICollection<Document> Documents { get; set; }
+    public User User { get; set; }
 
 }

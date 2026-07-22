@@ -16,7 +16,7 @@ public class OrderGet
     public string UserName { get; set; }
     public string Description { get; set; }
     
-    public ICollection<string> DocumentsPack { get; set; }
+    public ICollection<Dto.DocumentGet> DocumentsPack { get; set; }
 
     public OrderGet(Order order)
     {
@@ -28,7 +28,7 @@ public class OrderGet
         UserId = order.UserId;
         UserName = order.User.Name;
         Description = order.Description;
-        DocumentsPack = order.DocumentsPack;
+        DocumentsPack = order.Documents.Select(d => new Dto.DocumentGet(d)).ToList();
 
     }
 }
