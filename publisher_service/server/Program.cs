@@ -6,10 +6,12 @@ using Repo;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<ApplicationContext>();
+builder.Services.AddHttpClient();
 
 var jwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
@@ -140,7 +142,7 @@ app.MapGet("/orders", (ApplicationContext context) =>
 
 }).RequireAuthorization();
 
-app.MapGet("/orders/{id}", (int id, ApplicationContext context) =>
+app.MapGet("/orders/{id}", async (int id, [FromServices] ApplicationContext context, [FromServices] IHttpClientFactory httpClientFactory) =>
 {
     var order = context.Orders
         .Include(o => o.User)          // Явная загрузка пользователя
@@ -152,10 +154,48 @@ app.MapGet("/orders/{id}", (int id, ApplicationContext context) =>
         return Results.NotFound();
     }
 
+    try
+    {
+        var client = httpClientFactory.CreateClient();
+        
+        // ВАЖНО: Если внешний API ожидает внешний идентификатор заказа (ЕПГУ), 
+        // замените {id} на {order.EpguOrderId} в URL ниже.
+        var config = context.ConfigSettings.FirstOrDefault();
+        var meta = new Dto.Meta{
+            region=config.Region, 
+            serviceCode=config.ServiceCode, 
+            targetCode=config.TargetCode
+        };
+        var json = JsonSerializer.Serialize(meta);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await client.PostAsync($"http://localhost:5010/api/gusmev/order/{order.EpguOrderId}", content: content);
+        
+        if (response.IsSuccessStatusCode)
+        {
+            var jsonResponse = await response.Content.ReadAsStringAsync();
+            using var jsonDoc = JsonDocument.Parse(jsonResponse);
+            
+            if (jsonDoc.RootElement.TryGetProperty("order", out var orderElement) && 
+                orderElement.TryGetProperty("orderStatusId", out var statusIdElement))
+            {
+                int externalStatusCode = statusIdElement.GetInt32();
+                
+                order.StatusCode = externalStatusCode;
+                await context.SaveChangesAsync();
+                
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Ошибка запроса");
+    }
+
     return Results.Ok(new Dto.OrderGet(order));
 }).RequireAuthorization();
 
-app.MapPost("/orders/", ([FromForm] Dto.OrderCreate orderData, ApplicationContext context, ClaimsPrincipal user) =>
+app.MapPost("/orders/", ([FromForm] Dto.OrderCreate orderData, [FromServices] ApplicationContext context, ClaimsPrincipal user) =>
 {
 
     var userIdStr = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -213,7 +253,7 @@ app.MapPost("/orders/", ([FromForm] Dto.OrderCreate orderData, ApplicationContex
     // Сохраняем все изменения в базе данных (и Order, и Document)
     context.SaveChanges();
 
-    return Results.Created($"/orders/{newOrder.Id}", newOrder.Id);
+    return Results.Created($"/orders/{newOrder.Id}", new {id=newOrder.Id});
 }).RequireAuthorization().DisableAntiforgery();
 
 app.MapGet("/documents/{localName}", (string localName, IWebHostEnvironment env) =>
@@ -254,7 +294,9 @@ app.MapDelete("/users/{id:int}", (int id, ApplicationContext context) =>
 
     user.DeletedAt = DateTime.UtcNow;
     context.SaveChanges();
-    return Results.Ok(new { id });
+    return Results.Ok(new { id }); // исправить на dTo 
+    // Переписть api по единый формат ответа
+
 }).RequireAuthorization(policy => policy.RequireRole("admin"));
 
 app.MapPost("/users", (Dto.UserCreate userData, ApplicationContext context) =>

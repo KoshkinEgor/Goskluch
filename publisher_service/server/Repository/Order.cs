@@ -11,6 +11,7 @@ public class Order
     public string ReceiverId { get; set; }
     public int UserId { get; set; }
     public string Description { get; set; }
+    public int StatusCode {get;set;}
     public ICollection<Document> Documents { get; set; }
     public User User { get; set; }
 
