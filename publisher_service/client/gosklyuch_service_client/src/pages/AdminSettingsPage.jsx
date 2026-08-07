@@ -54,18 +54,7 @@ export const AdminSettingsPage = () => {
                     />
                   </div>
                 </div>
-                <div className="form-group mb-3">
-                  <label className="col-form-label">Наименование услуги </label>
-                  <div>
-                    <input
-                      type="text"
-                      className="form-control"
-                      name="serviceName"
-                      value={settings.serviceName || ""}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                </div>
+               
                 <div className="form-group mb-3">
                   <label className="col-form-label">Наименование организации</label>
                   <div>
@@ -92,6 +81,18 @@ export const AdminSettingsPage = () => {
                       className="form-control"
                       name="serviceCode"
                       value={settings.serviceCode || ""}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                </div>
+                 <div className="form-group mb-3">
+                  <label className="col-form-label">Наименование услуги </label>
+                  <div>
+                    <input
+                      type="text"
+                      className="form-control"
+                      name="serviceName"
+                      value={settings.serviceName || ""}
                       onChange={handleInputChange}
                     />
                   </div>

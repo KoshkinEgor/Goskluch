@@ -1,7 +1,7 @@
 
 namespace Dto;
 
-record Meta
+public record Meta
 {
     required public string region {get;set;}
     required public string serviceCode {get;set;}

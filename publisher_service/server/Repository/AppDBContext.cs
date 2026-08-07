@@ -8,6 +8,10 @@ public class ApplicationContext : DbContext
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<Document> Documents => Set<Document>();
 
+    public DbSet<SmevOrder> SmevOrder => Set<SmevOrder>();
+
+    public DbSet<EpguOrder> EpguOrder => Set<EpguOrder>();
+
     public DbSet<ConfigSettings> ConfigSettings => Set<ConfigSettings>();
 
     public ApplicationContext(DbContextOptions<ApplicationContext> options) : base(options)

@@ -1,6 +1,6 @@
 import axios from "axios";
 
-axios.defaults.baseURL = "http://localhost:5197"
+axios.defaults.baseURL = "http://localhost:5197";
 axios.defaults.withCredentials = true;
 
 export async function fetchOrders() {
@@ -23,12 +23,16 @@ export async function fetchOrder(id) {
   }
 }
 
-export async function fetchOrderCreate(orderData, files) {
+export async function fetchEsiaOrderCreate(orderData, files) {
   try {
     const formData = new FormData();
 
-    formData.append("ReceiverIdType", orderData.receiverIdType || "");
-    formData.append("ReceiverId", orderData.receiverId || "");
+    if (orderData.receiverIdType === "snils") {
+      formData.append("ReceiverSnils", orderData.receiverId || "");
+    } else if (orderData.receiverIdType === "oid") {
+      formData.append("ReceiverOid", orderData.receiverId || "");
+    }
+
     formData.append("SignatureType", orderData.signatureType || "");
     formData.append("Description", orderData.description || "");
 
@@ -45,10 +49,36 @@ export async function fetchOrderCreate(orderData, files) {
       });
     }
 
-    const response = await axios.post(
-      "/orders/",
-      formData,
-    );
+    const response = await axios.post("/esiaorders/", formData);
+
+    return response.data;
+  } catch (error) {
+    console.error("Не удалось создать заказ:", error.message);
+    throw error;
+  }
+}
+
+export async function fetchSmevOrderCreate(orderData, files) {
+  try {
+    const formData = new FormData();
+
+    formData.append("ReceiverSnils", orderData.receiverId || "");
+    formData.append("Description", orderData.description || "");
+
+    if (files) {
+      const fileArray =
+        files instanceof FileList
+          ? Array.from(files)
+          : Array.isArray(files)
+            ? files
+            : [files];
+
+      fileArray.forEach((file) => {
+        formData.append("DocumentsPack", file);
+      });
+    }
+
+    const response = await axios.post("/smevorders/", formData);
 
     return response.data;
   } catch (error) {
@@ -67,12 +97,19 @@ export async function fetchConfigSettings() {
   }
 }
 
+export async function fetchCOrderRetry(id) {
+  try {
+    const response = await axios.post(`/orders/retry/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error("Не удалось получить данные конфигурации:", error.message);
+    return [];
+  }
+}
+
 export async function fetchConfigSettingsPut(settings) {
   try {
-    const response = await axios.put(
-      "/configsettings",
-      settings,
-    );
+    const response = await axios.put("/configsettings", settings);
     return response.data;
   } catch (error) {
     console.error("Не удалось получить данные конфигурации:", error.message);
@@ -102,13 +139,9 @@ export async function fetchUserDelete(Id) {
 
 export async function fetchUserCreate(userData) {
   try {
-    const response = await axios.post(
-      `/users/`,
-      userData,
-      {
-        withCredentials: true,
-      },
-    );
+    const response = await axios.post(`/users/`, userData, {
+      withCredentials: true,
+    });
     console.log(response.data);
     return response.data;
   } catch (error) {
@@ -137,5 +170,18 @@ export async function fetchAuthLogout() {
   } catch (error) {
     console.error("Не удалось получить данные пользователя:", error.message);
     return "";
+  }
+}
+
+
+export async function downloadSignedDocuments(orderId) {
+  try {
+    const response = await axios.get(`/orders/download-signed/${orderId}`, {
+      responseType: "blob", // Указываем, что ожидаем бинарные данные (zip-архив)
+    });
+    return response;
+  } catch (error) {
+    console.error("Не удалось скачать подписанные документы:", error.message);
+    throw error;
   }
 }

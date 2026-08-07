@@ -1,15 +1,19 @@
 import { Header } from "../components/Header";
-
 import { useState, useEffect } from "react";
 import { fetchOrders } from "../repository/repository";
 
 export const OrderRegistryPage = () => {
   const [orders, setOrders] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const getOrders = async () => {
-      const fetchedOrders = await fetchOrders();
-      setOrders(fetchedOrders);
+      try {
+        const fetchedOrders = await fetchOrders();
+        setOrders(fetchedOrders);
+      } catch (error) {
+        console.error("Не удалось загрузить реестр запросов:", error);
+      }
     };
 
     getOrders();
@@ -21,18 +25,33 @@ export const OrderRegistryPage = () => {
 
       <main>
         <div className="container">
-          <nav className="navbar text-right mb-4">
-            <a href="/createorder" className="nav-item">
-              + Создать запрос
-            </a>
+          <nav className="navbar navbar-expand mb-4 px-0 mx-0">
+            <div className="container-fluid justify-content-start px-0 mx-0">
+              <ul className="navbar-nav me-auto gap-3 px-0 mx-0">
+                <li className="nav-item">
+                  <a href="/createesiaorder" className="nav-link px-0">
+                    Создать запрос ЕСИА
+                  </a>
+                </li>
+
+                <li className="nav-item">
+                  <a href="/createsmevorder" className="nav-link px-0">
+                    Создать запрос СМЭВ
+                  </a>
+                </li>
+              </ul>
+            </div>
           </nav>
           <h2 className="mb-4">Реестр запросов</h2>
+
           <div className="input-group mb-3">
             <input
               type="text"
               className="form-control"
               placeholder="СНИЛС или OID"
               aria-label="СНИЛС или OID"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
             <div className="input-group-append col-md-2">
               <button className="btn btn-outline-primary w-100" type="button">
@@ -40,6 +59,7 @@ export const OrderRegistryPage = () => {
               </button>
             </div>
           </div>
+
           <table className="table">
             <thead>
               <tr>
@@ -53,28 +73,27 @@ export const OrderRegistryPage = () => {
 
             <tbody>
               {orders.map((o, i) => {
+                const isSnils =
+                  o.receiverSnils && o.receiverSnils.trim() !== "";
+                const receiverLabel = isSnils ? "СНИЛС: " : "OID: ";
+                const receiverValue = isSnils
+                  ? o.receiverSnils
+                  : o.receiverOid || "Не указан";
+
                 return (
-                  <tr key={i}>
-                    <th scope="col">{i + 1}</th>
-                    <td scope="col">
-                      {new Date(o.createdDate).toLocaleDateString("ru-Ru")}
+                  <tr key={o.id || i}>
+                    <th scope="row">{i + 1}</th>
+                    <td>
+                      {o.createdDate
+                        ? new Date(o.createdDate).toLocaleDateString("ru-RU")
+                        : "—"}
                     </td>
-                    <td scope="col">
-                      <small className="text-secondary">
-                        {o.receiverIdType == "snils" ? "СНИЛС: " : "OID: "}
-                      </small>
-                      {o.receiverId}
+                    <td>
+                      <small className="text-secondary">{receiverLabel}</small>
+                      {receiverValue}
                     </td>
-                    <td scope="col" className="text-success">
-                      Получена
-                    </td>
-                    {/* <td scope="col" className="text-warning">
-                  Отклонена
-                </td> */}
-                    {/* <td scope="col" className="text-danger">
-                  Внутренная ошибка
-                </td> */}
-                    <td scope="col">
+                    <td className="text-secondary">{o.statusData.messageId}</td>
+                    <td>
                       <a href={`/orders/${o.id}`}>Подробнее</a>
                     </td>
                   </tr>
@@ -82,6 +101,7 @@ export const OrderRegistryPage = () => {
               })}
             </tbody>
           </table>
+
           <nav>
             <ul className="pagination">
               <li className="page-item">

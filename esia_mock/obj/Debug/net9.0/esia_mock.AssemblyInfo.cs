@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("esia_mock")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+78d351e6cbe8f0cf44d67eec79b1f0749657a905")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b8982a960ef3190678212f669892f108a5f3fba1")]
 [assembly: System.Reflection.AssemblyProductAttribute("esia_mock")]
 [assembly: System.Reflection.AssemblyTitleAttribute("esia_mock")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -1,5 +1,5 @@
 
-namespace DTO;
+namespace Dto;
 
 record Meta
 {

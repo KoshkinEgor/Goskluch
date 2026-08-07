@@ -2,7 +2,8 @@ import { Routes, Route, Navigate, Outlet, useLocation } from "react-router";
 import { OrderRegistryPage } from "./pages/OrderRegistryPage";
 import { LoginPage } from "../src/pages/LoginPage";
 import { OrderDetailsPage } from "./pages/OrderDetailsPage";
-import { CreateOrderPage } from "./pages/CreateOrderPage";
+import { CreateEsiaOrderPage } from "./pages/CreateEsiaOrderPage";
+import { CreateSmevOrderPage } from "./pages/CreateSmevOrderPage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { useEffect, useState } from "react";
@@ -16,7 +17,9 @@ function App() {
      
       <Route>
         <Route path="/orders" element={<OrderRegistryPage />} />
-        <Route path="/createorder" element={<CreateOrderPage />} />
+        <Route path="/createesiaorder" element={<CreateEsiaOrderPage />} />
+        <Route path="/createsmevorder" element={<CreateSmevOrderPage />} />
+
         <Route path="/orders/:id" element={<OrderDetailsPage />} />
       </Route>
 

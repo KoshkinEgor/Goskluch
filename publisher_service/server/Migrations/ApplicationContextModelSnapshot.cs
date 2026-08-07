@@ -58,6 +58,10 @@ namespace server.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("DocumentEpguCode")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("LocalName")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -69,11 +73,42 @@ namespace server.Migrations
                     b.Property<int>("OrderId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ZipFileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OrderId");
 
                     b.ToTable("Documents");
+                });
+
+            modelBuilder.Entity("Repo.EpguOrder", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EpguOrderCode")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OrderStatusId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SignatureType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.ToTable("EpguOrder");
                 });
 
             modelBuilder.Entity("Repo.Order", b =>
@@ -89,19 +124,14 @@ namespace server.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("EpguOrderId")
+                    b.Property<bool>("IsDeadRequest")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("ReceiverId")
-                        .IsRequired()
+                    b.Property<string>("ReceiverOid")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ReceiverIdType")
-                        .IsRequired()
+                    b.Property<string>("ReceiverSnils")
                         .HasColumnType("TEXT");
-
-                    b.Property<int>("StatusCode")
-                        .HasColumnType("INTEGER");
 
                     b.Property<int>("UserId")
                         .HasColumnType("INTEGER");
@@ -111,6 +141,29 @@ namespace server.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Orders");
+                });
+
+            modelBuilder.Entity("Repo.SmevOrder", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OrderStatusId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SmevMessageId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.ToTable("SmevOrder");
                 });
 
             modelBuilder.Entity("Repo.User", b =>
@@ -154,6 +207,17 @@ namespace server.Migrations
                     b.Navigation("Order");
                 });
 
+            modelBuilder.Entity("Repo.EpguOrder", b =>
+                {
+                    b.HasOne("Repo.Order", "Order")
+                        .WithOne("EpguOrder")
+                        .HasForeignKey("Repo.EpguOrder", "OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+                });
+
             modelBuilder.Entity("Repo.Order", b =>
                 {
                     b.HasOne("Repo.User", "User")
@@ -165,9 +229,24 @@ namespace server.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Repo.SmevOrder", b =>
+                {
+                    b.HasOne("Repo.Order", "Order")
+                        .WithOne("SmevOrder")
+                        .HasForeignKey("Repo.SmevOrder", "OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+                });
+
             modelBuilder.Entity("Repo.Order", b =>
                 {
                     b.Navigation("Documents");
+
+                    b.Navigation("EpguOrder");
+
+                    b.Navigation("SmevOrder");
                 });
 
             modelBuilder.Entity("Repo.User", b =>

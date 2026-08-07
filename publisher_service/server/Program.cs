@@ -1,21 +1,27 @@
+
+using Epgu;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Repo;
+using Smev;
 using System.IdentityModel.Tokens.Jwt;
+using System.IO.Compression;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<ApplicationContext>();
+builder.Services.AddDbContext<Repo.ApplicationContext>();
 builder.Services.AddHttpClient();
+
 
 var jwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
+string storagePath = builder.Configuration["Storage:StoragePath"] ?? "./DocumentsStorage";
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -31,7 +37,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
 
-        // Явное указание извлекать токен из Cookie
+        // Извлекать токен из Cookie
         options.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
@@ -47,6 +53,24 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
+
+builder.Services.AddScoped<EpguIntegrationService>();
+builder.Services.AddScoped<SmevIntegrationService>();
+builder.Services.AddHostedService<SmevDeadRequestWorker>();
+builder.Services.AddHostedService<EpguDeadRequestWorker>();
+
+
+builder.Services.AddHttpClient("EpguApiClient", client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["Epgu:BaseUrl"] ?? "http://localhost:5010/api/gusmev/");
+    client.DefaultRequestHeaders.Add("Accept", "application/json");
+});
+
+builder.Services.AddHttpClient("SmevApiClient", client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["Smev:BaseUrl"] ?? "http://localhost:5025/");
+    client.DefaultRequestHeaders.Add("Accept", "application/json");
+});
 
 
 builder.Services.AddCors(options =>
@@ -68,9 +92,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 // --- Эндпоинты ---
-
-// Авторизация (доступен без авторизации)
-app.MapPost("/auth", (Dto.UserAuth userAuth, ApplicationContext context, HttpContext httpContext) =>
+app.MapPost("/auth", (Dto.UserAuth userAuth, Repo.ApplicationContext context, HttpContext httpContext) =>
 {
     var user = context.Users.FirstOrDefault(u =>
         u.Login == userAuth.Login &&
@@ -120,8 +142,6 @@ app.MapPost("/auth", (Dto.UserAuth userAuth, ApplicationContext context, HttpCon
         Expires = DateTime.UtcNow.AddDays(1)
     });
 
-    // Возвращаем токен также в теле ответа для обратной совместимости, 
-    // если клиентское приложение ожидает его в JSON.
     return Results.Ok(new { token = tokenString, userRole = user.Role });
 });
 
@@ -133,20 +153,31 @@ app.MapDelete("auth", (HttpContext httpContext) =>
 });
 
 // Заказы
-app.MapGet("/orders", (ApplicationContext context) =>
+app.MapGet("/orders", (Repo.ApplicationContext context) =>
 {
     return context.Orders
         .Include(o => o.User)
         .Include(o => o.Documents)
+        .Include(o => o.EpguOrder)
+        .Include(o => o.SmevOrder)
+        .Where(o => o.IsDeadRequest == false)
         .Select(o => new Dto.OrderGet(o));
 
 }).RequireAuthorization();
 
-app.MapGet("/orders/{id}", async (int id, [FromServices] ApplicationContext context, [FromServices] IHttpClientFactory httpClientFactory) =>
+app.MapGet("/orders/{id}", async (
+    int id,
+    [FromServices] Repo.ApplicationContext context,
+    [FromServices] IHttpClientFactory httpClientFactory,
+    [FromServices] EpguIntegrationService epguIntegrationService,
+    [FromServices] SmevIntegrationService smevIntegrationService
+) =>
 {
     var order = context.Orders
-        .Include(o => o.User)          // Явная загрузка пользователя
-        .Include(o => o.Documents)     // Явная загрузка документов (уже используется в вашем DTO)
+        .Include(o => o.User)
+        .Include(o => o.Documents)
+        .Include(o => o.EpguOrder)
+        .Include(o => o.SmevOrder)
         .FirstOrDefault(o => o.Id == id);
 
     if (order == null)
@@ -154,74 +185,77 @@ app.MapGet("/orders/{id}", async (int id, [FromServices] ApplicationContext cont
         return Results.NotFound();
     }
 
-    try
+    if (order.EpguOrder != null)
     {
-        var client = httpClientFactory.CreateClient();
-        
-        // ВАЖНО: Если внешний API ожидает внешний идентификатор заказа (ЕПГУ), 
-        // замените {id} на {order.EpguOrderId} в URL ниже.
-        var config = context.ConfigSettings.FirstOrDefault();
-        var meta = new Dto.Meta{
-            region=config.Region, 
-            serviceCode=config.ServiceCode, 
-            targetCode=config.TargetCode
-        };
-        var json = JsonSerializer.Serialize(meta);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var statusCode = await epguIntegrationService.GetOrderStatusAsync(order);
 
-        var response = await client.PostAsync($"http://localhost:5010/api/gusmev/order/{order.EpguOrderId}", content: content);
-        
-        if (response.IsSuccessStatusCode)
+        if (statusCode != null)
         {
-            var jsonResponse = await response.Content.ReadAsStringAsync();
-            using var jsonDoc = JsonDocument.Parse(jsonResponse);
-            
-            if (jsonDoc.RootElement.TryGetProperty("order", out var orderElement) && 
-                orderElement.TryGetProperty("orderStatusId", out var statusIdElement))
-            {
-                int externalStatusCode = statusIdElement.GetInt32();
-                
-                order.StatusCode = externalStatusCode;
-                await context.SaveChangesAsync();
-                
-            }
+            order.EpguOrder.OrderStatusId = statusCode.Value.OrderStatusId;
+            context.SaveChanges();
         }
+
     }
-    catch (Exception ex)
+
+    else if (order.SmevOrder != null)
     {
-        Console.WriteLine("Ошибка запроса");
+        string? statusId = await smevIntegrationService.GetOrderStatusAsync(order);
+        if (statusId != null)
+        {
+            order.SmevOrder.OrderStatusId = statusId;
+            context.SaveChanges();
+        }
+        order.SmevOrder.OrderStatusId = statusId;
+
     }
 
     return Results.Ok(new Dto.OrderGet(order));
+
 }).RequireAuthorization();
 
-app.MapPost("/orders/", ([FromForm] Dto.OrderCreate orderData, [FromServices] ApplicationContext context, ClaimsPrincipal user) =>
+app.MapPost("/esiaorders/", async (
+    [FromForm] Dto.EsiaOrderCreate orderData,
+    [FromServices] Repo.ApplicationContext context,
+    ClaimsPrincipal userClaims,
+    [FromServices] EpguIntegrationService epguIntegrationService,
+    [FromServices] SmevIntegrationService smevIntegrationService
+    ) =>
 {
 
-    var userIdStr = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-    if (!int.TryParse(userIdStr, out int userId))
+    var orderCreatedDate = DateTime.UtcNow;
+    var receiverOid = orderData.ReceiverOid;
+    var receiverSnils = orderData.ReceiverSnils;
+    var description = orderData.Description;
+    var signType = orderData.SignatureType;
+    var userIdStr = userClaims.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    int userId;
+    var config = context.ConfigSettings.FirstOrDefault();
+
+    if (!int.TryParse(userIdStr, out userId))
     {
         return Results.Unauthorized();
     }
 
+    if (orderData.DocumentsPack.Any(d => !FileTypeHelper.IsValid(d)))
+    {
+        return Results.BadRequest();
+    }
+
+    var user = context.Users.FirstOrDefault(u => u.Id == userId);
+
     var newOrder = new Repo.Order
     {
-        EpguOrderId = 123123123, // Todo: Вытащить из ответа ЕПГУ
-        CreatedDate = DateTime.UtcNow,
-        ReceiverId = orderData.ReceiverId,
-        ReceiverIdType = orderData.ReceiverIdType,
+        CreatedDate = orderCreatedDate,
+        ReceiverOid = receiverOid,
+        ReceiverSnils = receiverSnils,
         UserId = userId,
+        User = user,
         Description = orderData.Description,
-        Documents = new List<Repo.Document>()
+        EpguOrder = new Repo.EpguOrder() { SignatureType = signType }
     };
 
     context.Orders.Add(newOrder);
-
-    // Рекомендуется выносить путь в конфигурацию (appsettings.json)
-    string storagePath = "./DocumentsStorage"; 
-    
-    // Гарантируем существование директории перед записью
-    Directory.CreateDirectory(storagePath);
+    context.SaveChanges();
 
     foreach (var doc in orderData.DocumentsPack)
     {
@@ -231,30 +265,279 @@ app.MapPost("/orders/", ([FromForm] Dto.OrderCreate orderData, [FromServices] Ap
         }
 
         var fileExtension = Path.GetExtension(doc.FileName);
-        var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
-        var filePath = Path.Combine(storagePath, uniqueFileName);
+        var uniqueFileName = FileNameHelper.GetUniqueFileName(doc.FileName);
+        var zipFileName = FileNameHelper.GetUniqueFileName(doc.FileName);
+        var epguDocumentId = FileNameHelper.GetUniqueFileName(doc.FileName);
 
         var newDocument = new Repo.Document
         {
-            Name = doc.FileName,       // Оригинальное имя файла для отображения пользователю
-            LocalName = uniqueFileName, // Уникальное имя для физического хранения
-            Order = newOrder
+            Name = doc.FileName,
+            LocalName = uniqueFileName,
+            Order = newOrder,
+            ZipFileName = zipFileName,
+            DocumentEpguCode = epguDocumentId
         };
 
         context.Documents.Add(newDocument);
 
-        // Сохраняем файл на диск
+        // Сохранить файл на диск
+        var filePath = Path.Combine(storagePath, uniqueFileName);
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            doc.CopyTo(stream);
+        }
+    }
+    context.SaveChanges();
+
+
+    // Отправка запрос в ЕПГУ
+    var epguOrderId = await epguIntegrationService.FetchOrderIdAsync();
+    epguOrderId = await epguIntegrationService.SendOrderAsync(newOrder);
+
+    if (epguOrderId is not null)
+    {
+        newOrder.EpguOrder.EpguOrderCode = epguOrderId;
+        newOrder.IsDeadRequest = false;
+    }
+
+    context.SaveChanges();
+    // ----
+
+    return Results.Created($"/orders/{newOrder.Id}", new Dto.OrderGet(newOrder));
+
+}).RequireAuthorization().DisableAntiforgery();
+
+
+
+app.MapGet("/orders/download-signed/{id}", async (int id,
+    [FromServices] Repo.ApplicationContext context,
+    [FromServices] EpguIntegrationService epguIntegrationService,
+    [FromServices] SmevIntegrationService smevIntegrationService
+    ) =>
+{
+    var order = context.Orders
+      .Include(o => o.User)
+      .Include(o => o.Documents)
+      .Include(o => o.EpguOrder)
+      .Include(o => o.SmevOrder)
+      .FirstOrDefault(o => o.Id == id);
+
+    if (order is null)
+    {
+        return Results.NotFound("Заказ не найден");
+    }
+
+    // Проверка статуса подписания для СМЭВ
+    if (order.SmevOrder is not null)
+    {
+        var orderResult = await smevIntegrationService.GetOrderResultAsync(order);
+        if (orderResult is null)
+        {
+            return Results.NotFound("Запрос еще не подписан или подписи не найдены");
+        }
+    }
+
+    // Проверка статуса для ЕПГУ 
+    if (order.EpguOrder is not null)
+    {
+        var status = await epguIntegrationService.GetOrderStatusAsync(order);
+        if (status == null || status.Value.OrderStatusId != "DONE")
+        {
+            return Results.NotFound("Запрос ЕПГУ еще не подписан");
+        }
+    }
+
+    var filesToZip = new Dictionary<string, byte[]>();
+
+    foreach (var doc in order.Documents)
+    {
+        var filePath = Path.Combine(storagePath, doc.LocalName);
+        if (!File.Exists(filePath))
+        {
+            continue;
+        }
+
+        byte[] fileBytes = await File.ReadAllBytesAsync(filePath);
+
+        var entryName = string.IsNullOrWhiteSpace(doc.ZipFileName) ? doc.Name : doc.ZipFileName;
+
+        filesToZip[entryName] = fileBytes;
+
+        var signatureBytes = FileSignatureHelper.CreateDetachedSignatureBytes(fileBytes);
+        filesToZip[$"{entryName}.sig"] = signatureBytes;
+    }
+
+    if (filesToZip.Count == 0)
+    {
+        return Results.NotFound("Файлы документов отсутствуют или не найдены на сервере");
+    }
+
+    var archiveBytes = await ArchiveHelper.buildArchiveAsync(filesToZip);
+
+    return Results.File(archiveBytes, "application/zip", $"order_{id}_signed.zip");
+
+}).RequireAuthorization();
+
+
+
+app.MapPost("/orders/retry/{id}", async (
+    int id,
+    [FromServices] Repo.ApplicationContext context,
+    ClaimsPrincipal userClaims,
+    [FromServices] EpguIntegrationService epguIntegrationService,
+    [FromServices] SmevIntegrationService smevIntegrationService
+) =>
+{
+
+    var orderData = context.Orders
+        .Include(o => o.EpguOrder)
+        .Include(o => o.SmevOrder)
+        .Include(o => o.Documents)
+        .Include(o => o.User)
+        .FirstOrDefault(o => o.Id == id)
+        ;
+    if (orderData is null) return Results.NotFound("Запрос не найден");
+
+    if (orderData.EpguOrder is not null)
+    {
+        // Отправка запрос в ЕПГУ
+        orderData.IsDeadRequest = true;
+        var epguOrderId = await epguIntegrationService.FetchOrderIdAsync();
+        epguOrderId = await epguIntegrationService.SendOrderAsync(orderData);
+
+        if (epguOrderId is not null)
+        {
+            orderData.EpguOrder.EpguOrderCode = epguOrderId;
+            orderData.IsDeadRequest = false;
+        }
+
+        context.SaveChanges();
+        // ----
+    }
+
+    else if (orderData.EpguOrder is not null)
+    {
+        // Отправка XML запроса в СМЭВ
+        orderData.IsDeadRequest = true;
+        orderData.SmevOrder = new Repo.SmevOrder();
+        context.SaveChanges();
+
+        var smevMessageId = await smevIntegrationService.SendOrderAsync(orderData);
+        orderData.SmevOrder.SmevMessageId = smevMessageId ?? "";
+        orderData.SmevOrder.OrderStatusId = "";
+        context.SaveChanges();
+
+        // Подтверждение отправки запроса
+        if (smevMessageId is not null)
+        {
+            orderData.IsDeadRequest = false;
+        }
+        // ---
+    }
+
+
+
+    return Results.Created($"/orders/{orderData.Id}", new Dto.OrderGet(orderData));
+
+
+
+});
+
+app.MapPost("/smevorders/", async (
+    [FromForm] Dto.SmevOrderCreate orderData,
+    [FromServices] Repo.ApplicationContext context,
+    ClaimsPrincipal userClaims,
+    [FromServices] EpguIntegrationService epguIntegrationService,
+    [FromServices] SmevIntegrationService smevIntegrationService
+    ) =>
+{
+
+    var orderCreatedDate = DateTime.UtcNow;
+    var receiverSnils = orderData.ReceiverSnils;
+    var description = orderData.Description;
+    var userIdStr = userClaims.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    int userId;
+    var config = context.ConfigSettings.FirstOrDefault();
+
+    if (!int.TryParse(userIdStr, out userId))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (orderData.DocumentsPack.Any(d => !FileTypeHelper.IsValid(d)))
+    {
+        return Results.BadRequest();
+    }
+
+    var user = context.Users.FirstOrDefault(u => u.Id == userId);
+
+    var newOrder = new Repo.Order
+    {
+        CreatedDate = orderCreatedDate,
+        ReceiverSnils = receiverSnils,
+        UserId = userId,
+        User = user,
+        Description = orderData.Description,
+        SmevOrder = new Repo.SmevOrder()
+    };
+
+    context.Orders.Add(newOrder);
+    context.SaveChanges();
+
+    foreach (var doc in orderData.DocumentsPack)
+    {
+        if (doc == null || doc.Length == 0)
+        {
+            continue;
+        }
+
+        var fileExtension = Path.GetExtension(doc.FileName);
+        var uniqueFileName = FileNameHelper.GetUniqueFileName(doc.FileName);
+        var zipFileName = FileNameHelper.GetUniqueFileName(doc.FileName);
+        var epguDocumentId = FileNameHelper.GetUniqueFileName(doc.FileName);
+
+        var newDocument = new Repo.Document
+        {
+            Name = doc.FileName,
+            LocalName = uniqueFileName,
+            Order = newOrder,
+            ZipFileName = zipFileName,
+            DocumentEpguCode = epguDocumentId
+        };
+
+        context.Documents.Add(newDocument);
+
+        // Сохранить файл на диск
+        var filePath = Path.Combine(storagePath, uniqueFileName);
         using (var stream = new FileStream(filePath, FileMode.Create))
         {
             doc.CopyTo(stream);
         }
     }
 
-    // Сохраняем все изменения в базе данных (и Order, и Document)
+    // Отправка XML запроса в СМЭВ
+    newOrder.SmevOrder = new Repo.SmevOrder();
     context.SaveChanges();
 
-    return Results.Created($"/orders/{newOrder.Id}", new {id=newOrder.Id});
+    var smevMessageId = await smevIntegrationService.SendOrderAsync(newOrder);
+    newOrder.SmevOrder.SmevMessageId = smevMessageId ?? "";
+    newOrder.SmevOrder.OrderStatusId = "";
+    context.SaveChanges();
+
+    // Подтверждение отправки запроса
+    if (smevMessageId is not null)
+    {
+        newOrder.IsDeadRequest = false;
+    }
+    // ---
+
+    return Results.Created($"/orders/{newOrder.Id}", new Dto.OrderGet(newOrder));
+
 }).RequireAuthorization().DisableAntiforgery();
+
+
+
+
 
 app.MapGet("/documents/{localName}", (string localName, IWebHostEnvironment env) =>
 {
@@ -273,33 +556,32 @@ app.MapGet("/documents/{localName}", (string localName, IWebHostEnvironment env)
         return Results.NotFound();
     }
 
-    var contentType = "application/octet-stream"; 
-    
+    var contentType = "application/octet-stream";
+
     return Results.File(filePath, contentType, safeFileName);
 
 }).RequireAuthorization();
 
 // Пользователи и настройки
-app.MapGet("/users", (ApplicationContext context) =>
+app.MapGet("/users", (Repo.ApplicationContext context) =>
 {
     return context.Users
         .Where(u => u.DeletedAt == null)
         .Select(u => new Dto.UserGet(u));
 }).RequireAuthorization(policy => policy.RequireRole("admin"));
 
-app.MapDelete("/users/{id:int}", (int id, ApplicationContext context) =>
+app.MapDelete("/users/{id:int}", (int id, Repo.ApplicationContext context) =>
 {
     var user = context.Users.FirstOrDefault(u => u.Id == id);
     if (user is null) return Results.NotFound();
 
     user.DeletedAt = DateTime.UtcNow;
     context.SaveChanges();
-    return Results.Ok(new { id }); // исправить на dTo 
-    // Переписть api по единый формат ответа
+    return Results.Ok();
 
 }).RequireAuthorization(policy => policy.RequireRole("admin"));
 
-app.MapPost("/users", (Dto.UserCreate userData, ApplicationContext context) =>
+app.MapPost("/users", (Dto.UserCreate userData, Repo.ApplicationContext context) =>
 {
     var newUser = new Repo.User
     {
@@ -312,17 +594,19 @@ app.MapPost("/users", (Dto.UserCreate userData, ApplicationContext context) =>
     context.SaveChanges();
 
     return Results.Ok(new Dto.UserGet(newUser));
+
 }).RequireAuthorization(policy => policy.RequireRole("admin"));
 
-app.MapGet("/configsettings", (ApplicationContext context) =>
+app.MapGet("/configsettings", (Repo.ApplicationContext context) =>
 {
     var config = context.ConfigSettings.FirstOrDefault();
     return config is not null
         ? Results.Ok(new Dto.ConfigSettingsGet(config))
         : Results.NotFound();
+
 }).RequireAuthorization(policy => policy.RequireRole("admin"));
 
-app.MapPut("/configsettings", (Dto.ConfigSettingsPut newConfig, ApplicationContext context) =>
+app.MapPut("/configsettings", (Dto.ConfigSettingsPut newConfig, Repo.ApplicationContext context) =>
 {
     var config = context.ConfigSettings.FirstOrDefault();
     if (config is not null)
@@ -338,16 +622,16 @@ app.MapPut("/configsettings", (Dto.ConfigSettingsPut newConfig, ApplicationConte
     return Results.Ok();
 }).RequireAuthorization(policy => policy.RequireRole("admin")).DisableAntiforgery();
 
-// Инициализация (доступно ТОЛЬКО для admin)
-app.MapGet("/initusers", (ApplicationContext context) =>
+
+app.MapGet("/initusers", (Repo.ApplicationContext context) =>
 {
     context.Orders.ExecuteDelete();
     context.Users.ExecuteDelete();
     context.ConfigSettings.ExecuteDelete();
 
-    var user1 = new User { Name = "Петров Петр Петрович", Login = "PP@mail.ru", Password = "12345", Role = "user" };
-    var user2 = new User { Name = "Васильев Василий Васильевич", Login = "VV@mail.ru", Password = "12345", Role = "user" };
-    var user3 = new User { Name = "Тихонов Тихон Тихонович", Login = "TT@mail.ru", Password = "12345", Role = "admin" };
+    var user1 = new Repo.User { Name = "Петров Петр Петрович", Login = "PP@mail.ru", Password = "12345", Role = "user" };
+    var user2 = new Repo.User { Name = "Васильев Василий Васильевич", Login = "VV@mail.ru", Password = "12345", Role = "user" };
+    var user3 = new Repo.User { Name = "Тихонов Тихон Тихонович", Login = "TT@mail.ru", Password = "12345", Role = "admin" };
 
     context.Users.AddRange(user1, user2, user3);
 
@@ -356,7 +640,7 @@ app.MapGet("/initusers", (ApplicationContext context) =>
     //     new Order { CreatedDate = DateTime.UtcNow.AddDays(-3), Description = "Запрос на подписание доверенности", EpguOrderId = 987654321, User = user2, ReceiverIdType = "oid", ReceiverId = "1000001234567" }
     // );
 
-    context.ConfigSettings.Add(new ConfigSettings
+    context.ConfigSettings.Add(new Repo.ConfigSettings
     {
         Mnemonics = "MNSV03",
         ServiceName = "Отправка документов на подпись в «Госключ»",

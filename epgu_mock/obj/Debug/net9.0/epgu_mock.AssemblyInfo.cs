@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("epgu_mock")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+96198f9b9ec04878ec601999da4196fbcef7cf46")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b8982a960ef3190678212f669892f108a5f3fba1")]
 [assembly: System.Reflection.AssemblyProductAttribute("epgu_mock")]
 [assembly: System.Reflection.AssemblyTitleAttribute("epgu_mock")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
